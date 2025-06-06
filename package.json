@@ -1,0 +1,23 @@
+{
+  "name": "vod-ai-outline",
+  "version": "1.0.0",
+  "description": "VOD AI Outline Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --filter '@polyv/*' dev",
+    "build": "pnpm --parallel --filter '@polyv/*' build",
+    "install:all": "pnpm install",
+    "clean": "pnpm --parallel --filter '@polyv/*' clean",
+    "lint": "pnpm --parallel --filter '@polyv/*' lint"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "pnpm": ">=8.0.0"
+  }
+} 

@@ -1,0 +1,18 @@
+{
+  "name": "vod-ai-outline-demo",
+  "version": "1.0.0",
+  "description": "VOD AI Outline UI Demo",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {},
+  "keywords": ["vod", "ai", "outline", "demo"],
+  "author": "",
+  "license": "MIT"
+} 
