@@ -1,0 +1,55 @@
+{
+  "name": "@polyv/vod-ai-outline-logic",
+  "version": "1.0.0",
+  "description": "VOD AI Outline Logic Library - Pure JavaScript utilities for video outline processing",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .js",
+    "lint:fix": "eslint src --ext .js --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:unit": "jest __tests__/api.simple.test.js",
+    "test:integration": "jest __tests__/api.integration.test.js",
+    "test:all": "jest --verbose"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.27.4",
+    "@babel/preset-env": "^7.27.2",
+    "babel-jest": "30.0.0-beta.3",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "rimraf": "^5.0.5",
+    "vite": "^5.0.8"
+  },
+  "keywords": [
+    "javascript",
+    "utility",
+    "polyv",
+    "vod",
+    "ai",
+    "outline",
+    "video",
+    "processing"
+  ],
+  "author": "Polyv",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.9.0",
+    "js-md5": "^0.8.3"
+  }
+}

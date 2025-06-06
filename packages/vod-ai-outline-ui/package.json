@@ -1,0 +1,63 @@
+{
+  "name": "@polyv/vod-ai-outline-ui",
+  "version": "1.0.0",
+  "description": "VOD AI Outline UI Components based on Vue 2.7 + Vite",
+  "main": "dist/index.umd.js",
+  "module": "dist/index.es.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.umd.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./dist/style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:lib": "npm run clean && vite build --mode lib",
+    "build:demo": "npm run build:lib && echo '构建完成，文件已自动复制到demo目录'",
+    "preview": "vite preview",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .vue,.js,.ts",
+    "lint:fix": "eslint src --ext .vue,.js,.ts --fix",
+    "copy-to-demo": "node scripts/copy-to-demo.js"
+  },
+  "dependencies": {
+    "@polyv/vod-ai-outline-logic": "workspace:*",
+    "simple-mind-map": "^0.14.0",
+    "vue": "^2.7.14"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue2": "^2.3.1",
+    "@vue/eslint-config-standard": "^8.0.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.20.1",
+    "rimraf": "^5.0.5",
+    "sass": "^1.69.5",
+    "terser": "^5.24.0",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.8",
+    "vite-plugin-dts": "^3.7.0"
+  },
+  "peerDependencies": {
+    "vue": "^2.7.0"
+  },
+  "keywords": [
+    "vue",
+    "vue2",
+    "vite",
+    "ui",
+    "components",
+    "polyv",
+    "vod",
+    "ai",
+    "outline"
+  ],
+  "author": "Polyv",
+  "license": "MIT"
+}
