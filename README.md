@@ -49,6 +49,11 @@ pnpm clean
 
 # 代码检查
 pnpm lint
+
+# 🚀 Release构建（推荐）
+pnpm run release          # 执行完整的release构建
+pnpm run release:build    # 仅构建项目
+pnpm run release:copy     # 仅复制构建产物
 ```
 
 ## 工作流程
