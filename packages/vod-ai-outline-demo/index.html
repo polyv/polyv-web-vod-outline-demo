@@ -276,7 +276,7 @@
 
         // 追加密钥并生成MD5
         const appSecret = "xxxx";
-        const stringToSign = queryString + appSecret;
+        const stringToSign = appSecret + queryString + appSecret;
         const signature = CryptoJS.MD5(stringToSign).toString().toUpperCase();
 
         return signature;

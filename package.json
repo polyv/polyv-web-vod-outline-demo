@@ -7,11 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm --parallel --filter '@polyv/*' dev",
-    "build": "pnpm --parallel --filter '@polyv/*' build",
+    "dev": "pnpm --parallel dev --filter '@polyv/*'",
+    "build": "pnpm --parallel build --filter '@polyv/*'",
     "install:all": "pnpm install",
-    "clean": "pnpm --parallel --filter '@polyv/*' clean",
-    "lint": "pnpm --parallel --filter '@polyv/*' lint",
+    "clean": "pnpm --parallel clean --filter '@polyv/*'",
+    "lint": "pnpm --parallel lint --filter '@polyv/*'",
     "release": "node scripts/release.js",
     "release:build": "pnpm clean && pnpm --filter '@polyv/vod-ai-outline-logic' build && pnpm --filter '@polyv/vod-ai-outline-ui' build:lib",
     "release:copy": "node scripts/copy-release.js"
