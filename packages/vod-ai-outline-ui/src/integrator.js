@@ -6,6 +6,7 @@
 import Vue from 'vue'
 import AIOutlinePanel from './components/AIOutlinePanel.vue'
 import * as VodAiOutlineLogic from '@polyv/vod-ai-outline-logic'
+import { debugLog } from './config/env'
 
 // 常量定义
 const DEFAULT_CONFIG = {
@@ -79,8 +80,6 @@ class VodAiOutlineIntegrator {
     if (!config.api || typeof config.api !== 'object') {
       throw new IntegratorError('必须提供API配置', 'API_CONFIG_MISSING')
     }
-
-    console.log('config.api', config.api)
 
     const { appId, appSecret } = config.api
     // 如果没有提供appId或appSecret，则必须提供getSignature函数
@@ -203,7 +202,20 @@ class VodAiOutlineIntegrator {
         suggestQuestions: [],
         introduction: '',
         videoData: null,
+        videoTitle: '',
         lastVideoId: null,
+        currentVid: null,
+
+        // 异步轮询状态
+        isPolling: false,
+        pollingMessage: '',
+        isQuestionsPolling: false,
+        pollingQuestionsMessage: '',
+
+        // 错误状态
+        outlineError: null,
+        qaError: null,
+
         config: { ...config.options }
       }),
       render: this._createRenderFunction(),
@@ -220,11 +232,12 @@ class VodAiOutlineIntegrator {
       if (this.error) {
         return this._renderError(h)
       }
-      
-      if (this.outlineData.length > 0) {
+
+      // 只要有currentVid就渲染面板，让组件内部处理loading和error状态
+      if (this.currentVid) {
         return this._renderOutlinePanel(h)
       }
-      
+
       return h('div') // 空状态
     }
   }
@@ -243,14 +256,117 @@ class VodAiOutlineIntegrator {
         this.loading = true
         this.error = null
         this.lastVideoId = vid
+        this.currentVid = vid
+
+        // 清除缓存
+        if (logicService.clearCache) {
+          logicService.clearCache(vid)
+        }
 
         try {
-          const result = await logicService.getVideoData(vid, options)
-          this._handleVideoDataResult(result)
+          // 同时启动大纲和问答的异步获取
+          await Promise.all([
+            this._loadSummaryData(vid, options),
+            this._loadQuestionsData(vid, options)
+          ])
         } catch (error) {
           this._handleVideoDataError(error, config.callbacks?.onError)
         } finally {
           this.loading = false
+        }
+      },
+
+      // 异步获取大纲数据
+      async _loadSummaryData(vid, options = {}) {
+        if (!logicService) return
+
+        this.isPolling = true
+        this.pollingMessage = ''
+
+        try {
+          const result = await logicService.getVideoSummaryAsync(
+            { vid, appId: this.config?.appId || options.appId },
+            {
+              onStatusChange: (status, message, pollCount) => {
+                this.pollingMessage = message || '智能大纲生成中，请稍后'
+                if (config.callbacks?.onStatusChange) {
+                  config.callbacks.onStatusChange('outline', status, message, pollCount)
+                }
+              }
+            }
+          )
+
+          if (result.success) {
+            this.outlineData = result.outlineData || []
+            this.introduction = result.introduction || ''
+            this.videoData = result.videoData || this.videoData
+            this.videoTitle = result.videoData?.title || '视频标题'
+            this.outlineError = null
+          } else {
+            this.outlineError = result.errors?.[0] || '智能大纲生成失败'
+          }
+        } catch (error) {
+          this.outlineError = error.message || '智能大纲轮询异常'
+          // 不抛出错误，允许问答数据独立加载成功
+        } finally {
+          this.isPolling = false
+        }
+      },
+
+      // 异步获取推荐问题数据
+      async _loadQuestionsData(vid, options = {}) {
+        if (!logicService) return
+
+        this.isQuestionsPolling = true
+        this.pollingQuestionsMessage = ''
+
+        try {
+          const result = await logicService.getSuggestQuestionsAsync(
+            { vid, appId: this.config?.appId || options.appId, size: options.questionsSize || 5 },
+            {
+              onStatusChange: (status, message, pollCount) => {
+                this.pollingQuestionsMessage = message || '推荐问题生成中，请稍后'
+                if (config.callbacks?.onStatusChange) {
+                  config.callbacks.onStatusChange('questions', status, message, pollCount)
+                }
+              }
+            }
+          )
+
+          if (result.success) {
+            this.suggestQuestions = result.questions || []
+            this.qaError = null
+          } else {
+            this.qaError = result.errors?.[0] || '推荐问题生成失败'
+          }
+        } catch (error) {
+          this.qaError = error.message || '推荐问题轮询异常'
+          // 不抛出错误，允许大纲数据独立加载成功
+        } finally {
+          this.isQuestionsPolling = false
+        }
+      },
+
+      // 重试处理方法
+      async handleOutlineRetry() {
+        if (!this.currentVid) return
+
+        this.outlineError = null
+        try {
+          await this._loadSummaryData(this.currentVid, {})
+        } catch (error) {
+          this.outlineError = error.message || '重试失败'
+        }
+      },
+
+      async handleQaRetry() {
+        if (!this.currentVid) return
+
+        this.qaError = null
+        try {
+          await this._loadQuestionsData(this.currentVid, {})
+        } catch (error) {
+          this.qaError = error.message || '重试失败'
         }
       },
 
@@ -268,19 +384,9 @@ class VodAiOutlineIntegrator {
         }
       },
 
-      _handleVideoDataResult(result) {
-        if (result?.success) {
-          this.outlineData = result.outlineData || []
-          this.suggestQuestions = result.suggestQuestions || []
-          this.introduction = result.introduction || ''
-          this.videoData = result.videoData || null
-        } else {
-          throw new IntegratorError(result?.message || '获取视频数据失败', 'API_ERROR')
-        }
-      },
 
       _handleVideoDataError(error, onError) {
-        console.error('加载视频数据失败:', error)
+        debugLog('加载视频数据失败:', error)
         this.error = error.message || '加载失败'
         if (onError) {
           onError(error)
@@ -303,13 +409,21 @@ class VodAiOutlineIntegrator {
             'outline-data': this.outlineData,
             'suggest-questions': this.suggestQuestions,
             'introduction': this.introduction,
+            'video-title': this.videoTitle,
             'default-active-tab': this.config.defaultActiveTab,
-            'player-height': this.config.playerHeight
+            'is-summary-loading': this.isPolling,
+            'summary-loading-message': this.pollingMessage,
+            'is-questions-loading': this.isQuestionsPolling,
+            'questions-loading-message': this.pollingQuestionsMessage,
+            'outline-error': this.outlineError,
+            'qa-error': this.qaError
           },
           on: {
             'tab-change': (tab) => config.callbacks?.onTabChange?.(tab),
             'segment-click': (segment) => config.callbacks?.onSegmentClick?.(segment),
-            'time-click': (time) => config.callbacks?.onTimeClick?.(time)
+            'time-click': (time) => config.callbacks?.onTimeClick?.(time),
+            'outline-retry': () => this.handleOutlineRetry(),
+            'qa-retry': () => this.handleQaRetry()
           }
         })
       }
@@ -335,7 +449,14 @@ class VodAiOutlineIntegrator {
       logicService,
       loadVideoData: (vid, options) => instance.loadVideoData(vid, options),
       updateConfig: (newConfig) => instance.updateConfig(newConfig),
-      destroy: () => this.destroy(instanceId)
+      destroy: () => this.destroy(instanceId),
+
+      // 状态访问器
+      get isLoading() { return instance.isPolling || instance.isQuestionsPolling },
+      get hasData() { return instance.outlineData?.length > 0 || instance.suggestQuestions?.length > 0 },
+      get error() { return instance.error },
+      get outlineError() { return instance.outlineError },
+      get qaError() { return instance.qaError }
     }
   }
 
@@ -568,7 +689,6 @@ const createGlobalAPI = () => {
 const installGlobalAPI = () => {
   if (typeof window !== 'undefined') {
     window.VodAiOutline = createGlobalAPI()
-    console.log('VodAiOutline 全局API已加载 v' + window.VodAiOutline.version)
   }
 }
 

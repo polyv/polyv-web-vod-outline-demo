@@ -1,42 +1,38 @@
-import { createGetSignatureFunction, createGetSignatureByLocalFunction } from '../services/signService'
+import { createGetSignatureByLocalFunction } from '../services/signService'
+import envConfig, { debugLog } from './env'
 
 /**
  * API配置管理
  */
-
-const getConfig = () => ({
-  baseURL: 'https://api.polyv.net/ai-public',
-  timeout: 30000,
-  signatureMethod: 'MD5'
-})
 
 /**
  * 获取API配置
  * @returns {Object} API配置对象
  */
 export function getApiConfig() {
-  const env = process.env.NODE_ENV || 'development'
-  const config = getConfig()
-  
-  // 在开发环境下，使用dev server的签名接口
-  if (env === 'development') {
-    // config.getSignature = createGetSignatureFunction({
-    //   baseURL: '', // 使用相同域名
-    //   timeout: 10000
-    // })
-    console.log('createGetSignatureByLocalFunction')
-    config.getSignature = createGetSignatureByLocalFunction({
-      appId: 'xxx',
-      appSecret: 'xxx'
-    })
-  } else {
-    // 生产环境需要提供getSignature函数或者使用其他签名方式
-    // 这里可以根据实际情况配置
-    if (!config.getSignature) {
-      throw new Error('生产环境必须提供 getSignature 函数')
-    }
+  const config = {
+    baseURL: envConfig.api.baseURL,
+    timeout: envConfig.api.timeout,
+    signatureMethod: envConfig.api.signatureMethod
   }
-  
+
+  debugLog('API配置:', config)
+
+  // 根据环境和配置决定签名方式， 生产环境不建议使用本地签名
+  if (envConfig.dev.useLocalSignature && envConfig.credentials.appId && envConfig.credentials.appSecret) {
+    // 使用本地签名（开发环境）
+    debugLog('使用本地签名')
+    config.getSignature = createGetSignatureByLocalFunction({
+      appId: envConfig.credentials.appId,
+      appSecret: envConfig.credentials.appSecret
+    })
+  } else if (envConfig.isProduction()) {
+    // 生产环境必须提供签名方式，通过接口的方式返回对应sign、timestamp等必须参数
+    throw new Error('生产环境必须配置 VITE_SIGNATURE_ENDPOINT 或 VITE_APP_SECRET')
+  } else {
+    throw new Error('未找到有效的签名配置，请检查环境变量')
+  }
+
   return config
 }
 
@@ -59,41 +55,7 @@ export function validateApiConfig(config) {
   return true
 }
 
-/**
- * 创建生产环境签名函数（示例）
- * @param {Object} options - 配置选项
- * @param {string} options.signatureEndpoint - 签名接口地址
- * @param {string} options.appId - 应用ID
- * @returns {Function} 获取签名的函数
- */
-export function createProductionSignatureFunction(options) {
-  const { signatureEndpoint, appId } = options
-  
-  return async (params) => {
-    const response = await fetch(signatureEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Id': appId
-      },
-      body: JSON.stringify({ params })
-    })
-    
-    if (!response.ok) {
-      throw new Error(`签名服务错误: ${response.status}`)
-    }
-    
-    const result = await response.json()
-    if (!result.success) {
-      throw new Error(result.message || '获取签名失败')
-    }
-    
-    return result.data
-  }
-}
-
 export default {
   getApiConfig,
-  validateApiConfig,
-  createProductionSignatureFunction,
+  validateApiConfig
 } 

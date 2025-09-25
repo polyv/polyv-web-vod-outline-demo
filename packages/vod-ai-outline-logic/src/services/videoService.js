@@ -90,13 +90,212 @@ class VideoService {
   }
 
   /**
+   * 异步获取推荐问题（支持轮询）
+   * @param {Object} params
+   * @param {string} params.vid
+   * @param {string} [params.appId]
+   * @param {number} [params.size] 默认5
+   * @param {Object} [options]
+   * @param {number} [options.pollInterval] 默认10秒
+   * @param {number} [options.maxPollTime] 默认5分钟
+   * @param {Function} [options.onStatusChange]
+   */
+  async getSuggestQuestionsAsync(params, options = {}) {
+    const {
+      pollInterval = 10000,
+      maxPollTime = 300000,
+      onStatusChange
+    } = options
+
+    const startTime = Date.now()
+    let pollCount = 0 
+
+    while (true) {
+      try {
+        const response = await this.apiClient.getSuggestQuestionsByVidV2({
+          vid: params.vid,
+          size: params.size ?? 10,
+          appId: params.appId
+        })
+        pollCount++
+
+        if (onStatusChange) {
+          onStatusChange(response.status, response.message, pollCount)
+        }
+
+        switch (response.status) {
+          case 'success': {
+            const questions = response.data?.questions || []
+            const normalized = questions.map(q => ({
+              ...q,
+              startTime: normalizeTimeFormat(q.startTime),
+              endTime: normalizeTimeFormat(q.endTime)
+            }))
+            return {
+              success: true,
+              questions: normalized,
+              errors: [],
+              pollCount,
+              totalTime: Date.now() - startTime
+            }
+          }
+          case 'processing': {
+            if (Date.now() - startTime >= maxPollTime) {
+              return {
+                success: false,
+                questions: [],
+                errors: ['AI问答生成超时，请稍后刷新重试'],
+                pollCount,
+                totalTime: Date.now() - startTime
+              }
+            }
+            await new Promise(resolve => setTimeout(resolve, pollInterval))
+            break
+          }
+          case 'fail':
+          default:
+            return {
+              success: false,
+              questions: [],
+              errors: [response.message || 'AI问答生成失败'],
+              pollCount,
+              totalTime: Date.now() - startTime
+            }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          questions: [],
+          errors: [`获取推荐问题失败: ${error.message}`],
+          pollCount,
+          totalTime: Date.now() - startTime
+        }
+      }
+    }
+  }
+
+  /**
+   * 异步获取视频摘要（V2版本，支持轮询）
+   * @param {Object} params - 请求参数
+   * @param {string} params.vid - 视频ID
+   * @param {string} [params.appId] - 应用ID
+   * @param {Object} [options] - 轮询选项
+   * @param {number} [options.pollInterval] - 轮询间隔（毫秒），默认10秒
+   * @param {number} [options.maxPollTime] - 最大轮询时间（毫秒），默认5分钟
+   * @param {Function} [options.onStatusChange] - 状态变化回调函数
+   * @param {Function} [options.onCancel] - 取消轮询的回调函数
+   * @returns {Promise<Object>} 处理后的视频数据
+   */
+  async getVideoSummaryAsync(params, options = {}) {
+    const { 
+      pollInterval = 10000, // 10秒
+      maxPollTime = 300000, // 5分钟
+      onStatusChange,
+      onCancel
+    } = options
+
+    const startTime = Date.now()
+    let pollCount = 0
+    let isCancelled = false
+
+    // 设置取消检查
+    if (onCancel) {
+      onCancel(() => {
+        isCancelled = true
+      })
+    }
+
+    while (true) {
+      // 检查是否已取消
+      if (isCancelled) {
+        return {
+          success: false,
+          videoData: null,
+          outlineData: [],
+          introduction: '',
+          suggestQuestions: [],
+          errors: ['轮询已取消'],
+          pollCount,
+          totalTime: Date.now() - startTime
+        }
+      }
+
+      try {
+        const response = await this.apiClient.getSummaryByVidV2(params)
+        pollCount++
+
+        // 通知状态变化
+        if (onStatusChange) {
+          onStatusChange(response.status, response.message, pollCount)
+        }
+
+        switch (response.status) {
+          case 'success':
+            // 成功获取摘要数据，仅返回摘要相关；推荐问题改由 getSuggestQuestionsAsync 独立轮询
+            const processedData = this.processSummaryData(response.data)
+            return {
+              success: true,
+              outlineData: processedData.outlineData,
+              introduction: processedData.introduction,
+              suggestQuestions: [],
+              errors: [],
+              pollCount,
+              totalTime: Date.now() - startTime
+            }
+
+          case 'processing':
+            // 检查是否超时
+            if (Date.now() - startTime >= maxPollTime) {
+              return {
+                success: false,
+                outlineData: [],
+                introduction: '',
+                suggestQuestions: [],
+                errors: ['大纲生成超时，请稍后刷新重试'],
+                pollCount,
+                totalTime: Date.now() - startTime
+              }
+            }
+
+            // 等待指定时间后继续轮询
+            await new Promise(resolve => setTimeout(resolve, pollInterval))
+            break // 继续循环
+
+          case 'fail':
+          default:
+            // 失败情况
+            return {
+              success: false,
+              outlineData: [],
+              introduction: '',
+              suggestQuestions: [],
+              errors: [response.message || '大纲生成失败，请重试'],
+              pollCount,
+              totalTime: Date.now() - startTime
+            }
+        }
+      } catch (error) {
+        console.error('轮询过程中发生错误:', error)
+        return {
+          success: false,
+          outlineData: [],
+          introduction: '',
+          suggestQuestions: [],
+          errors: [`轮询失败: ${error.message}`],
+          pollCount,
+          totalTime: Date.now() - startTime
+        }
+      }
+    }
+  }
+
+  /**
    * 处理API响应结果
    * @private
    */
   processApiResponses(summaryResult, questionsResult) {
     const result = {
       success: false,
-      videoData: null,
       outlineData: [],
       suggestQuestions: [],
       introduction: '', // 添加介绍字段
@@ -106,7 +305,6 @@ class VideoService {
     // 处理摘要数据
     if (summaryResult.status === 'fulfilled' && summaryResult.value.status === 'success') {
       const summaryData = this.processSummaryData(summaryResult.value.data)
-      result.videoData = summaryData.videoData
       result.outlineData = summaryData.outlineData
       result.introduction = summaryData.introduction
       result.success = true
@@ -142,17 +340,6 @@ class VideoService {
       throw new Error('摘要数据为空')
     }
 
-    // 处理视频基本信息 - 从introduction提取
-    const videoData = {
-      title: data.title || '未知标题',
-      host: data.host || data.author || '未知主持人', 
-      status: data.status || data.liveStatus || '已结束',
-      viewers: data.viewers || data.viewCount || 0,
-      duration: formatDuration(data.duration) || '00:00:00',
-      description: data.introduction || data.description || '',
-      publishTime: data.publishTime || data.createTime || null
-    }
-
     // 处理大纲数据 - 使用list字段
     let outlineData = []
     if (data.list && Array.isArray(data.list)) {
@@ -186,7 +373,6 @@ class VideoService {
     }
 
     return { 
-      videoData, 
       outlineData,
       introduction: data.introduction || ''
     }
