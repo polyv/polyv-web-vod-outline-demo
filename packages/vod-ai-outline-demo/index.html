@@ -232,14 +232,48 @@
     </div>
     <script src="https://player.polyv.net/resp/vod-player/latest/player.js"></script>
     <!-- 引入MD5库用于前端签名 -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.js"></script>
+
+    <!-- Demo 配置 -->
+    <script>
+      // Demo 配置常量
+      // 优先从url读取vid参数
+      function getVidFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('vid');
+      }
+
+      window.DemoConfig = {
+        appId: 'gga7xoqqie',
+        appSecret: '',
+        // 优先使用url中的vid，否则用默认
+        defaultVid: getVidFromUrl() || 'cc167950af6e50f810997f4ba10f3a9a_c', // 测试vid, 二选一,测试接口仅支持获取这俩vid的签名，别的vid会返回错误sign ['cc167950affe9c97080e37a20adb1d3e_c', 'cc167950af6e50f810997f4ba10f3a9a_c']
+        signatureMode: 'api', // 'frontend' | 'api' frontend为前端签名，api为后端签名，推荐使用api
+        signatureApiUrl: 'https://demo.ipolyv.cn/zhouzhanhong/ai/getSign.php',
+        debugMode: true
+      }
+    </script>
 
     <!-- 引入UI组件库 -->
     <script src="./dist/index.umd.js"></script>
 
     <script>
+      // Demo 配置
+      const config = window.DemoConfig;
+      const vid = config.defaultVid;
 
-     const vid = "cc167950affe9c97080e37a20adb1d3e_c";
+      // 简化的日志函数
+      function log(...args) {
+        if (config.debugMode) {
+          console.log('[Demo]', ...args);
+        }
+      }
+
+      function logError(...args) {
+        console.error('[Demo]', ...args);
+      }
+
+      log('初始化播放器，视频ID:', vid);
 
       const player = polyvPlayer({
         wrap: "#player-container",
@@ -249,9 +283,6 @@
       });
 
       let outlineInstance = null;
-
-      // 签名方式配置：'frontend' | 'api'
-      const SIGNATURE_MODE = "api"; // 可以改为 'frontend' 使用前端签名
 
       // 方式1：前端计算签名，仅开发环境使用
       function createSignatureFrontend(params) {
@@ -274,30 +305,28 @@
           .map((key) => `${key}${filteredParams[key]}`)
           .join("");
 
-        // 追加密钥并生成MD5
-        const appSecret = "xxxx";
+        // 使用配置中的应用密钥
+        const appSecret = config.appSecret;
         const stringToSign = appSecret + queryString + appSecret;
         const signature = CryptoJS.MD5(stringToSign).toString().toUpperCase();
 
+        log('前端签名生成完成');
         return signature;
       }
 
-      // 方式2：通过接口获取签名，生成环境一定要用这个！！！，签名规则 https://help.polyv.net/index.html#/live/api/buildSign
+      // 方式2：通过接口获取签名，生产环境推荐使用
       async function createSignatureApi(params) {
         try {
-          // 测试接口, 仅能获取这个vid的签名 cc167950affe9c97080e37a20adb1d3e_c
-          const response = await fetch(
-            "https://demo.ipolyv.cn/zhouzhanhong/ai/getSign.php",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                params: params,
-              }),
-            }
-          );
+          // 使用配置中的签名接口地址
+          const response = await fetch(config.signatureApiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              params: params,
+            }),
+          });
 
           if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -309,23 +338,24 @@
             throw new Error(result.message || "获取签名失败");
           }
 
+          log('API签名获取完成');
           return result.data.signature;
         } catch (error) {
-          console.error("获取签名失败:", error);
+          logError("获取签名失败:", error);
           throw new Error(`获取签名失败: ${error.message}`);
         }
       }
 
       // 统一签名函数，根据配置选择签名方式
       async function createSignature(params) {
-        console.log(`使用签名方式: ${SIGNATURE_MODE}`);
+        log(`使用签名方式: ${config.signatureMode}`);
 
-        if (SIGNATURE_MODE === "frontend") {
+        if (config.signatureMode === "frontend") {
           return createSignatureFrontend(params);
-        } else if (SIGNATURE_MODE === "api") {
+        } else if (config.signatureMode === "api") {
           return await createSignatureApi(params);
         } else {
-          throw new Error(`不支持的签名方式: ${SIGNATURE_MODE}`);
+          throw new Error(`不支持的签名方式: ${config.signatureMode}`);
         }
       }
 
@@ -343,13 +373,13 @@
       // 初始化应用
       async function initializeApp() {
         try {
-          console.log("开始初始化智能大纲应用...");
+          log("开始初始化智能大纲应用...");
 
           // 初始化配置
-          const config = {
+          const initConfig = {
             containerId: "vod-ai-outline-container",
             api: {
-              appId: "gga7xoqqie",
+              appId: config.appId,
               getSignature: createSignature,
             },
             getSignature: createSignature,
@@ -360,16 +390,16 @@
             },
             callbacks: {
               onError: (error) => {
-                console.error("组件错误:", error);
+                logError("组件错误:", error);
               },
               onTabChange: (tab) => {
-                console.log("切换到标签:", tab);
+                log("切换到标签:", tab);
               },
               onSegmentClick: (segment) => {
-                console.log("点击片段:", segment);
+                log("点击片段:", segment);
               },
               onTimeClick: (time) => {
-                console.log("点击时间:", time);
+                log("点击时间:", time);
                 // 将 time 格式 "00:00:45" 转为秒
                 function timeStringToSeconds(timeStr) {
                   const parts = timeStr.split(":").map(Number);
@@ -383,23 +413,23 @@
                   return 0;
                 }
                 const seconds = timeStringToSeconds(time);
-                console.log("转换后的秒数:", seconds);
+                log("转换后的秒数:", seconds);
                 player.j2s_seekVideo(seconds);
               },
             },
           };
 
-          console.log("初始化配置:", config);
+          log("初始化配置:", initConfig);
 
           // 初始化智能大纲
-          outlineInstance = await VodAiOutline.init(config);
-          console.log("智能大纲初始化成功");
+          outlineInstance = await VodAiOutline.init(initConfig);
+          log("智能大纲初始化成功");
           setTimeout(updateOutlineHeight, 0);
 
           // 自动加载视频数据
           await loadVideoData();
         } catch (error) {
-          console.error("初始化失败:", error);
+          logError("初始化失败:", error);
           showError(`初始化失败: ${error.message}`);
         }
       }
@@ -412,16 +442,16 @@
 
         try {
           const videoId = vid;
-          console.log("开始加载视频数据:", videoId);
+          log("开始加载视频数据:", videoId);
 
           await outlineInstance.loadVideoData(videoId, {
             useCache: false,
-            questionsSize: 5,
+            questionsSize: 10,
           });
 
-          console.log("视频数据加载完成");
+          log("视频数据加载完成");
         } catch (error) {
-          console.error("加载视频数据失败:", error);
+          logError("加载视频数据失败:", error);
           showError(`加载视频数据失败: ${error.message}`);
         }
       }
@@ -436,7 +466,7 @@
         if (playerContainer && outlineContainer) {
           const playerHeight = playerContainer.offsetHeight;
           outlineContainer.style.height = `${playerHeight}px`;
-          console.log("智能大纲高度已更新为:", playerHeight + "px");
+          log("智能大纲高度已更新为:", playerHeight + "px");
         }
       }
 
@@ -449,7 +479,7 @@
 
       // 页面加载完成后自动初始化
       window.addEventListener("load", function () {
-        console.log("页面加载完成，开始自动初始化...");
+        log("页面加载完成，开始自动初始化...");
 
         // 检查依赖
         if (typeof VodAiOutline === "undefined") {
@@ -457,13 +487,13 @@
           return;
         }
 
-        // 如果使用前端签名方式，检查CryptoJS是否加载
-        if (SIGNATURE_MODE === "frontend" && typeof CryptoJS === "undefined") {
+        // 如果使用前端签名方式，检查CryptoJS是否加载(可以使用别的库)
+        if (config.signatureMode === "frontend" && typeof CryptoJS === "undefined") {
           showError("使用前端签名模式需要加载CryptoJS库");
           return;
         }
 
-        console.log("所有依赖已加载完成");
+        log("所有依赖已加载完成");
 
         // 延迟一点时间确保所有资源加载完成
         setTimeout(() => {
@@ -479,11 +509,6 @@
         showError(`页面错误: ${event.error?.message || "未知错误"}`);
       });
 
-      // 未处理的Promise拒绝
-      window.addEventListener("unhandledrejection", function (event) {
-        console.error("未处理的Promise拒绝:", event.reason);
-        showError(`Promise错误: ${event.reason?.message || "未知错误"}`);
-      });
     </script>
   </body>
 </html>

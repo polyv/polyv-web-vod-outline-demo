@@ -11,7 +11,7 @@ const install = function (Vue) {
   
   // 注册所有组件
   components.forEach(component => {
-    Vue.component(component.name, component)
+    Vue.component(component)
   })
 }
 
