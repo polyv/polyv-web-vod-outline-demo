@@ -1,6 +1,6 @@
 {
   "name": "@polyv/vod-ai-outline-ui",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "VOD AI Outline UI Components based on Vue 2.7 + Vite",
   "main": "dist/index.umd.js",
   "module": "dist/index.es.js",
@@ -23,8 +23,6 @@
     "build:demo": "npm run build:lib && echo '构建完成，文件已自动复制到demo目录'",
     "preview": "vite preview",
     "clean": "rimraf dist",
-    "lint": "eslint src --ext .vue,.js,.ts",
-    "lint:fix": "eslint src --ext .vue,.js,.ts --fix",
     "copy-to-demo": "node scripts/copy-to-demo.js"
   },
   "dependencies": {

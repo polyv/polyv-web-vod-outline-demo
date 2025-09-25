@@ -1,6 +1,6 @@
 {
   "name": "vod-ai-outline-demo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "VOD AI Outline UI Demo",
   "scripts": {
     "start": "node server.js",
