@@ -1,4 +1,6 @@
 import { generateMD5Sign } from '@polyv/vod-ai-outline-logic'
+import { debugLog } from '../config/env'
+
 /**
  * 签名服务 - 用于ui层dev测试。
  */
@@ -8,6 +10,7 @@ class SignService {
     this.timeout = options.timeout || 10000
     this.appId = options.appId || ''
     this.appSecret = options.appSecret || ''
+    debugLog('初始化SignService:', { baseURL: this.baseURL, timeout: this.timeout, appId: this.appId })
   }
 
   /**
@@ -31,7 +34,7 @@ class SignService {
         throw new Error(response.message || '获取签名失败')
       }
     } catch (error) {
-      console.error('获取签名失败:', error)
+      debugLog('获取签名失败:', error)
       throw new Error(`获取签名失败: ${error.message}`)
     }
   }
@@ -41,7 +44,7 @@ class SignService {
     const signStr = generateMD5Sign({
       ...params
     }, appSecret)
-    console.log('signStr', signStr)
+    debugLog('本地签名结果:', signStr)
     return signStr
   }
 

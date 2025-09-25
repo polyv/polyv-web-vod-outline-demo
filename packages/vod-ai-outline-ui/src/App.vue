@@ -1,58 +1,65 @@
 <template>
   <div class="app">
-    <div v-if="loading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <p>正在加载视频数据...</p>
-    </div>
-    
-    <div v-else-if="error" class="error-container">
-      <p class="error-message">{{ error }}</p>
-      <button @click="retryLoad" class="retry-button">重试</button>
-    </div>
-    <AIOutlineMain 
-      v-else
-      :video-data="videoData"
+    <!-- 主要内容区域 -->
+    <AIOutlinePanel
+      class="p-outline-panel"
       :outline-data="outlineData"
       :suggest-questions="suggestQuestions"
       :introduction="introduction"
-      :default-active-tab="'qa'"
-      @segment-click="handleSegmentClick"
+      :video-title="videoTitle"
+      :default-active-tab="activeTab"
+      :is-summary-loading="isPolling"
+      :summary-loading-message="pollingMessage"
+      :is-questions-loading="isQuestionsPolling"
+      :questions-loading-message="pollingQuestionsMessage"
+      :outline-error="outlineError"
+      :qa-error="qaError"
+      @tab-change="handleTabChange"
       @time-click="handleTimeClick"
-    />
+      @outline-retry="handleOutlineRetry"
+      @qa-retry="handleQaRetry"
+
+    >
+    </AIOutlinePanel>
   </div>
 </template>
 
 <script>
 import { createVideoService } from '@polyv/vod-ai-outline-logic'
 import { getApiConfig, validateApiConfig } from './config/api'
-import AIOutlineMain from './components/AIMain.vue'
+import envConfig, { debugLog } from './config/env'
+import AIOutlinePanel from './components/AIOutlinePanel.vue'
 
 export default {
   name: 'App',
-  
+
   components: {
-    AIOutlineMain
+    AIOutlinePanel
   },
   
   data() {
     return {
-      loading: true,
-      error: null,
+      // 全局状态
       videoService: null,
-      
-      currentVid: this.getVideoIdFromUrl() || 'cc167950af597b81acc736a227da4acf_c',
-      
-      videoData: {
-        title: '',
-        host: '',
-        status: '',
-        viewers: 0,
-        duration: ''
-      },
-      
+      currentVid: this.getVideoIdFromUrl() || envConfig.default.vid,
+      appId: envConfig.credentials.appId,
+
+      // 数据状态
       outlineData: [],
       suggestQuestions: [],
-      introduction: ''
+      introduction: '',
+      videoTitle: '视频标题',
+      activeTab: 'outline',
+
+      // 轮询状态
+      isPolling: false,
+      pollingMessage: '',
+      isQuestionsPolling: false,
+      pollingQuestionsMessage: '',
+
+      // 错误状态
+      outlineError: null,
+      qaError: null
     }
   },
   
@@ -76,14 +83,11 @@ export default {
         }
         
         this.videoService = createVideoService(apiConfig)
-        
-        console.log('服务初始化成功，配置:', {
-          baseURL: apiConfig.baseURL,
-          hasGetSignature: typeof apiConfig.getSignature === 'function'
-        })
-        
+
+        debugLog('服务初始化成功')
+
       } catch (error) {
-        console.error('初始化服务失败:', error)
+        debugLog('初始化服务失败:', error)
         this.error = error.message || '初始化失败，请检查配置'
       }
     },
@@ -93,40 +97,9 @@ export default {
         this.error = '视频服务未初始化'
         return
       }
-      
-      this.loading = true
-      this.error = null
-      
-      try {
-        const result = await this.videoService.getVideoData(this.currentVid, {
-          appId: 'gga7xoqqie',
-          useCache: false,
-          questionsSize: 5
-        })
-        
-        if (result.success) {
-          console.info(result)
-          this.videoData = result.videoData
-          this.outlineData = result.outlineData
-          this.suggestQuestions = result.suggestQuestions
-          this.introduction = result.introduction
-          
-          console.log('视频数据加载成功:', {
-            videoData: this.videoData,
-            outlineCount: this.outlineData.length,
-            questionsCount: this.suggestQuestions.length
-          })
-          
-        } else {
-          console.warn('API调用失败:', result.errors)
-        }
-        
-      } catch (error) {
-        console.error('加载数据时发生错误:', error)
-        this.error = `加载数据失败: ${error.message}`
-      } finally {
-        this.loading = false
-      }
+
+      this.startSummaryPolling()
+      this.startQuestionsPolling()
     },
     
     async retryLoad() {
@@ -136,6 +109,7 @@ export default {
     async updateVideo(vid) {
       if (vid !== this.currentVid) {
         this.currentVid = vid
+        // 清除缓存并重新加载数据
         if (this.videoService) {
           this.videoService.clearCache(this.currentVid)
         }
@@ -143,49 +117,138 @@ export default {
       }
     },
     
+    handleTabChange(tab) {
+      debugLog('切换Tab:', tab)
+      this.activeTab = tab
+      this.$emit('tab-change', tab)
+    },
+
     handleSegmentClick(segment) {
-      console.log('点击分段:', segment)
+      debugLog('点击分段:', segment)
       const startTimeInSeconds = this.videoService?.parseTime(segment.startTime) || 0
       this.seekToTime(startTimeInSeconds)
       this.$emit('segment-click', segment)
     },
-    
+
     handleTimeClick(time) {
-      console.log('点击时间:', time)
+      debugLog('点击时间:', time)
       const timeInSeconds = this.videoService?.parseTime(time) || 0
       this.seekToTime(timeInSeconds)
       this.$emit('time-click', time)
     },
-    
+
     seekToTime(seconds) {
-      console.log(`跳转到时间: ${seconds}秒`)
-      
+      debugLog(`跳转到时间: ${seconds}秒`)
+
       // 通过事件总线通知播放器
       if (this.$eventBus) {
         this.$eventBus.$emit('seek-to-time', seconds)
       }
-      
+
       this.$emit('seek-to-time', seconds)
     },
-    
-    // 兼容旧版本的方法
-    handleItemClick(item, index) {
-      console.log('点击大纲项:', item, index)
-      alert(`点击了第 ${index + 1} 个大纲项: ${item.title}`)
+
+    // 重试处理方法
+    async handleOutlineRetry() {
+      debugLog('重试大纲数据')
+      this.outlineError = null
+      try {
+        await this.getSummaryDataAsync()
+      } catch (error) {
+        this.outlineError = error.message || '重试失败'
+      }
     },
-    
-    handleDataChange(newData) {
-      console.log('大纲数据变化:', newData)
-      this.outlineData = newData
+
+    async handleQaRetry() {
+      debugLog('重试问答数据')
+      this.qaError = null
+      try {
+        await this.startQuestionsPolling()
+      } catch (error) {
+        this.qaError = error.message || '重试失败'
+      }
     },
-    
-    handleSave(data) {
-      console.log('保存大纲数据:', data)
-      this.outlineData = data
-      alert('大纲数据已保存！')
+
+    // 开始智能大纲轮询, 默认10s轮询一次, 可配置
+    async startSummaryPolling() {
+      if (!this.videoService || !this.currentVid) {
+        throw new Error('服务未初始化或视频ID无效')
+      }
+
+      this.isPolling = true
+      this.pollingMessage = ''
+
+      try {
+        const result = await this.videoService.getVideoSummaryAsync(
+          { vid: this.currentVid, appId: this.appId },
+          {
+            onStatusChange: (status, message, pollCount) => {
+              this.pollingMessage = message || '智能大纲生成中，请稍后'
+              debugLog(`智能大纲轮询: ${status}, 第${pollCount}次轮询`)
+            }
+          }
+        )
+
+        if (result.success) {
+          
+          debugLog('智能大纲加载成功:', result)
+          this.videoData = result.videoData || this.videoData
+          this.outlineData = result.outlineData || []
+          this.introduction = result.introduction || ''
+          this.videoTitle = result.videoData?.title || '视频标题'
+          this.outlineError = null
+        } else {
+          this.outlineError = result.errors?.[0] || '智能大纲生成失败'
+        }
+
+        return result
+      } catch (error) {
+        this.outlineError = error.message || '智能大纲轮询异常'
+        throw error
+      } finally {
+        this.isPolling = false
+      }
+    },
+
+    // 开始推荐问题轮询, 默认10s轮询一次, 可配置
+    async startQuestionsPolling() {
+      if (!this.videoService || !this.currentVid) {
+        throw new Error('服务未初始化或视频ID无效')
+      }
+
+      this.isQuestionsPolling = true
+      this.pollingQuestionsMessage = ''
+
+      try {
+        const result = await this.videoService.getSuggestQuestionsAsync(
+          { vid: this.currentVid, appId: this.appId, size: 10,  },
+          {
+            onStatusChange: (status, message, pollCount) => {
+              this.pollingQuestionsMessage = message || '推荐问题生成中，请稍后'
+              debugLog(`推荐问题轮询: ${status}, 第${pollCount}次轮询`)
+            },
+          }
+        )
+
+        if (result.success) {
+          debugLog('推荐问题加载成功:', result.questions?.length || 0, '个问题')
+          this.suggestQuestions = result.questions || []
+          this.qaError = null
+        } else {
+          debugLog('推荐问题生成失败或超时:', result.errors)
+          this.qaError = result.errors?.[0] || '推荐问题生成失败'
+        }
+
+        return result
+      } catch (error) {
+        debugLog('推荐问题轮询异常:', error)
+        this.qaError = error.message || '推荐问题轮询异常'
+        throw error
+      } finally {
+        this.isQuestionsPolling = false
+      }
     }
   },
-  
   beforeDestroy() {
     if (this.videoService) {
       this.videoService.clearCache()
@@ -207,7 +270,15 @@ export default {
   overflow: auto;
 }
 
-.loading-container {
+.p-outline-panel {
+  width: 350px;
+
+  height: 700px;
+}
+
+/* 全局状态样式 */
+.g-loading-container,
+.g-error-container {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -216,36 +287,28 @@ export default {
   color: #FFFFFF;
 }
 
-.loading-spinner {
+.g-loading-spinner {
   width: 40px;
   height: 40px;
   border: 4px solid rgba(255, 255, 255, 0.1);
   border-left: 4px solid #3F76FC;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: g-spin 1s linear infinite;
   margin-bottom: 16px;
 }
 
-@keyframes spin {
+@keyframes g-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-.loading-container p {
+.g-loading-message {
   font-size: 16px;
   color: #ADADC0;
+  margin: 0;
 }
 
-.error-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 50vh;
-  color: #FFFFFF;
-}
-
-.error-message {
+.g-error-message {
   font-size: 16px;
   margin-bottom: 20px;
   color: #FF6264;
@@ -253,7 +316,7 @@ export default {
   line-height: 1.5;
 }
 
-.retry-button {
+.g-retry-button {
   padding: 12px 24px;
   background-color: #3F76FC;
   color: #FFFFFF;
@@ -265,13 +328,13 @@ export default {
   transition: all 0.3s ease;
 }
 
-.retry-button:hover {
+.g-retry-button:hover {
   background-color: #2c5ce6;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(63, 118, 252, 0.3);
 }
 
-.retry-button:active {
+.g-retry-button:active {
   transform: translateY(0);
 }
 </style> 
